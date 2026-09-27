@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import { useSiteStore } from '@/stores/siteStore'
 import { useProfileStore } from '@/stores/profileStore'
 import { useUiStore } from '@/stores/uiStore'
+import { useDecisionStore } from '@/stores/decisionStore'
 import { useRanking } from '@/hooks/useRanking'
 import { FACTOR_META } from '@/types/score'
 import { SURFACE_TYPES, ACCESS_MODES } from '@/types/campsite'
@@ -21,6 +22,7 @@ const router = useRouter()
 const siteStore = useSiteStore()
 const profileStore = useProfileStore()
 const uiStore = useUiStore()
+const decisionStore = useDecisionStore()
 
 const inputSites = computed(() =>
   siteStore.list.filter((site) => {
@@ -80,6 +82,12 @@ function openDetail(siteId: number | undefined): void {
   if (typeof siteId !== 'number') return
   void router.push(`/sites/${siteId}`)
 }
+
+/** 跳选址决定台账并预选中该营位；命中否决的营位在模板里已禁用入口 */
+function openDecide(siteId: number | undefined): void {
+  if (typeof siteId !== 'number') return
+  void router.push({ path: '/decisions', query: { site: siteId } })
+}
 </script>
 
 <template>
@@ -95,6 +103,7 @@ function openDetail(siteId: number | undefined): void {
       <div class="page-actions">
         <el-button @click="router.push('/scoring')">调权重</el-button>
         <el-button @click="router.push('/map')">看地图</el-button>
+        <el-button @click="router.push('/decisions')">决定台账</el-button>
         <el-button type="primary" @click="router.push('/sites/new')">新增营位</el-button>
       </div>
     </div>
@@ -184,9 +193,19 @@ function openDetail(siteId: number | undefined): void {
         <el-table-column label="营位" min-width="210">
           <template #default="{ row }">
             <div class="site-cell">
-              <el-link type="primary" underline="never" @click="openDetail(row.site.id)">
-                {{ row.site.code }} · {{ row.site.name }}
-              </el-link>
+              <span class="site-cell__name">
+                <el-link type="primary" underline="never" @click="openDetail(row.site.id)">
+                  {{ row.site.code }} · {{ row.site.name }}
+                </el-link>
+                <el-tooltip
+                  v-if="decisionStore.activeOf(row.siteId)"
+                  :content="`生效推荐：${decisionStore.activeOf(row.siteId)?.reason ?? ''}`"
+                  placement="top"
+                  :show-after="200"
+                >
+                  <el-tag type="success" size="small" effect="plain" class="ml6">已推荐</el-tag>
+                </el-tooltip>
+              </span>
               <span class="site-cell__sub">
                 {{ row.site.campName }} · 海拔 {{ row.site.elevation }} m · 容 {{ row.site.tentCapacity }} 帐
               </span>
@@ -246,9 +265,19 @@ function openDetail(siteId: number | undefined): void {
             <span v-else class="muted">无</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="132" fixed="right">
+        <el-table-column label="操作" width="196" fixed="right">
           <template #default="{ row }">
             <el-button size="small" text type="primary" @click="openDetail(row.site.id)">详情</el-button>
+            <el-button
+              size="small"
+              text
+              type="success"
+              :disabled="row.vetoed"
+              :title="row.vetoed ? '命中风险否决的营位不能推荐' : '确认推荐并留档'"
+              @click="openDecide(row.site.id)"
+            >
+              推荐
+            </el-button>
             <el-button size="small" text @click="router.push('/veto')">登记否决</el-button>
           </template>
         </el-table-column>
@@ -286,6 +315,11 @@ function openDetail(siteId: number | undefined): void {
 .site-cell {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+.site-cell__name {
+  display: inline-flex;
+  align-items: center;
   gap: 2px;
 }
 .site-cell__sub {

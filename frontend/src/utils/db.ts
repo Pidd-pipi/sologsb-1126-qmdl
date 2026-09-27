@@ -5,6 +5,7 @@
  *   v1 建 sites / factors 两张表
  *   v2 新增 profiles 表，并为 factors 补 siteId 索引
  *   v3 新增 vetos 表，并为存量营位回填默认权重方案
+ *   v4 新增 decisions 表（选址决定台账，快照不回写）
  */
 import Dexie, { type Table } from 'dexie'
 import type { Campsite } from '@/types/campsite'
@@ -12,16 +13,18 @@ import type { FactorAssessment } from '@/types/factor'
 import type { ScoreProfile } from '@/types/score'
 import { DEFAULT_WEIGHTS } from '@/types/score'
 import type { RiskVeto } from '@/types/veto'
+import type { DecisionRecord } from '@/types/decision'
 
 export const DB_NAME = 'gbcampsite-db'
 /** 当前数据结构版本号 */
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 
 export class GbCampsiteDatabase extends Dexie {
   sites!: Table<Campsite, number>
   factors!: Table<FactorAssessment, number>
   profiles!: Table<ScoreProfile, number>
   vetos!: Table<RiskVeto, number>
+  decisions!: Table<DecisionRecord, number>
 
   constructor() {
     super(DB_NAME)
@@ -53,7 +56,7 @@ export class GbCampsiteDatabase extends Dexie {
       })
 
     // v3：新增风险否决表；为存量营位回填默认方案 id 与新增字段缺省值
-    this.version(DB_VERSION)
+    this.version(3)
       .stores({
         sites: '++id, code, name, campName, surface, access, defaultProfileId, updatedAt',
         factors: '++id, siteId, assessedAt, assessor',
@@ -74,6 +77,15 @@ export class GbCampsiteDatabase extends Dexie {
             if (typeof s.tentCapacity !== 'number') s.tentCapacity = 1
           })
       })
+
+    // v4：新增选址决定台账表（纯新增表，无需改写存量数据）
+    this.version(DB_VERSION).stores({
+      sites: '++id, code, name, campName, surface, access, defaultProfileId, updatedAt',
+      factors: '++id, siteId, assessedAt, assessor',
+      profiles: '++id, name, season, active, updatedAt',
+      vetos: '++id, siteId, type, judgedAt',
+      decisions: '++id, siteId, status, decidedAt'
+    })
   }
 }
 

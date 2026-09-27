@@ -13,8 +13,10 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import { useSiteStore } from '@/stores/siteStore'
 import { useProfileStore } from '@/stores/profileStore'
 import { useUiStore } from '@/stores/uiStore'
+import { useDecisionStore } from '@/stores/decisionStore'
 import { useRanking } from '@/hooks/useRanking'
 import { FACTOR_META, NORMALIZE_LABELS } from '@/types/score'
+import { DECISION_STATUS_LABELS } from '@/types/decision'
 import { ASPECT_TYPES, SURFACE_TYPES, ACCESS_MODES } from '@/types/campsite'
 import type { AspectType, AccessMode, SurfaceType } from '@/types/campsite'
 import type { Grade } from '@/utils/score'
@@ -30,6 +32,7 @@ const router = useRouter()
 const siteStore = useSiteStore()
 const profileStore = useProfileStore()
 const uiStore = useUiStore()
+const decisionStore = useDecisionStore()
 
 const siteId = computed(() => Number(route.params.id))
 const site = computed(() => siteStore.byId(siteId.value))
@@ -56,6 +59,8 @@ function openSite(id: number): void {
 const grade = computed(() => scoreRow.value?.grade ?? 'C')
 const factorHistory = computed(() => siteStore.factorsOf(siteId.value))
 const vetoList = computed(() => uiStore.vetosOf(siteId.value))
+/** 该营位的选址决定记录（新 → 旧），快照留档不回写 */
+const decisionHistory = computed(() => decisionStore.decisionsOf(siteId.value))
 
 /* --------------------------- 多轮因子复核录入 --------------------------- */
 const showFactorForm = ref(false)
@@ -616,6 +621,63 @@ watch(
         </el-form-item>
       </el-form>
     </section>
+
+    <section class="panel">
+      <div class="panel__head">
+        <h2>选址决定记录</h2>
+        <el-button
+          size="small"
+          type="primary"
+          plain
+          :disabled="vetoList.length > 0"
+          :title="vetoList.length ? '命中风险否决的营位不能推荐' : '确认推荐并留档'"
+          @click="router.push({ path: '/decisions', query: { site: siteId } })"
+        >
+          确认推荐
+        </el-button>
+      </div>
+
+      <el-table v-if="decisionHistory.length" :data="decisionHistory" size="small" border>
+        <el-table-column label="状态" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+              {{ DECISION_STATUS_LABELS[row.status as 'active' | 'superseded'] }}
+            </el-tag>
+            <div v-if="row.status === 'superseded'" class="cell-sub">被 #{{ row.supersededBy }} 替代</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="留档得分 / 等级" width="190">
+          <template #default="{ row }">
+            <GradeBadge :grade="row.grade" :score="row.score" size="small" :vetoed="row.vetoed" />
+          </template>
+        </el-table-column>
+        <el-table-column label="留档名次" width="90" align="center">
+          <template #default="{ row }">第 {{ row.rank }} 名</template>
+        </el-table-column>
+        <el-table-column label="方案快照" min-width="150">
+          <template #default="{ row }">
+            {{ row.profileName }}
+            <div class="cell-sub">{{ NORMALIZE_LABELS[row.normalize as 'minmax' | 'threshold'] }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reason" label="推荐理由" min-width="220" show-overflow-tooltip />
+        <el-table-column label="决定人 / 日期" width="130">
+          <template #default="{ row }">
+            {{ row.decidedBy }}
+            <div class="cell-sub">{{ formatDate(row.decidedAt) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="留档时间" width="150">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+      <p v-else class="panel__hint">
+        暂无选址决定记录。点击「确认推荐」可把当前得分、权重、等级、因子数值与风险状态留档。
+      </p>
+      <p v-if="decisionHistory.length" class="panel__hint">
+        快照为确认当下留档：之后调整权重方案或补录因子评估只会重算当前名次，以上记录照旧。
+      </p>
+    </section>
   </div>
 
   <div v-else class="page">
@@ -646,5 +708,9 @@ watch(
 }
 .review-form {
   margin-bottom: 12px;
+}
+.cell-sub {
+  font-size: 11px;
+  color: var(--gb-muted);
 }
 </style>
