@@ -27,7 +27,7 @@ docker compose down
 | 语言 | TypeScript（`strict`，构建时 `vue-tsc` 类型检查零错误） |
 | 构建 | Vite 6 |
 | UI | Element Plus + `@element-plus/icons-vue` |
-| 状态 | Pinia（`siteStore` / `profileStore` / `uiStore`） |
+| 状态 | Pinia（`siteStore` / `profileStore` / `uiStore` / `decisionStore`） |
 | 路由 | Vue Router 4（history 模式，nginx `try_files` 兜底） |
 | 地图 | 高德地图 JS API（key 走 `VITE_AMAP_KEY`），未配置时自动降级为本地 SVG 网格视图 |
 | 本地数据 | IndexedDB（Dexie，`gbcampsite-db`，含版本号与升级迁移）+ localStorage（表单草稿） |
@@ -41,14 +41,16 @@ docker compose down
 | FactorAssessment 因子评估 | `frontend/src/types/factor.ts` | 所属营位、水源距离、风向与风力等级、信号强度、日照时长、落石落枝风险、植被遮蔽度、离车距离、离步道距离、评估人、评估日期 |
 | ScoreProfile 权重方案 | `frontend/src/types/score.ts` | 方案名、各因子权重（0-100）、归一化方式（极差归一 / 阈值分段）、A/B/C 等级阈值、适用季节、是否启用 |
 | RiskVeto 风险否决项 | `frontend/src/types/veto.ts` | 营位 id、否决类型（河道内 / 山洪沟 / 孤树下 / 崖底落石区 / 陡坡）、说明、判定人、判定日期 |
+| DecisionRecord 选址决定 | `frontend/src/types/decision.ts` | 营位与推荐理由、决定人、确认时间，留档快照（得分、名次、等级、权重方案、因子数值、风险状态），状态（生效中 / 已被替代）与替代者 id |
 
 ### IndexedDB 版本与升级迁移
 
-库名 `gbcampsite-db`（Dexie），共 4 张表：`sites`、`factors`、`profiles`、`vetos`。
+库名 `gbcampsite-db`（Dexie），共 5 张表：`sites`、`factors`、`profiles`、`vetos`、`decisions`。
 
 - **v1**：建立 `sites`（营位）与 `factors`（因子评估）两张表。
 - **v2**：新增 `profiles`（权重方案）表，并为 `factors` 补 `siteId` 索引，让「按营位取因子」走索引；同时为存量因子补齐 `shade`、`distanceToCar`、`distanceToTrail` 缺省值。
 - **v3**：新增 `vetos`（风险否决）表，并为存量营位回填 `defaultProfileId`（取当前启用方案的 id）与新增字段缺省值。
+- **v4**：新增 `decisions`（选址决定台账）表；纯新增表，存量数据无需迁移。
 
 ## 四、页面与路由
 
@@ -60,6 +62,7 @@ docker compose down
 | `/scoring` | 权重与评分（拖动各因子权重条，名次实时刷新，可另存为季节方案） | ScoreProfile、Campsite |
 | `/map` | 营位地图（高德 JS API 标记按等级着色，未配置 `VITE_AMAP_KEY` 时退化为本地 SVG 网格视图） | Campsite、RiskVeto |
 | `/veto` | 风险否决登记（选营位与否决类型、填说明，提交后名次表与地图同步更新） | RiskVeto、Campsite |
+| `/decisions` | 选址决定台账（选定营位、填推荐理由并确认，得分/权重/等级/因子/风险状态整体留档；改选后旧记录标为已被替代） | DecisionRecord、Campsite、ScoreProfile、RiskVeto |
 
 ## 五、共享组件与 hooks / utils
 
@@ -89,11 +92,11 @@ sologsb-1126/
     ├── vite.config.ts
     ├── public/favicon.svg
     └── src/
-        ├── types/{campsite,factor,score,veto}.ts
-        ├── stores/{siteStore,profileStore,uiStore}.ts
+        ├── types/{campsite,factor,score,veto,decision}.ts
+        ├── stores/{siteStore,profileStore,uiStore,decisionStore}.ts
         ├── components/common/{MapPanel,FactorScoreBar,GradeBadge,EmptyState,WeightEditor}.vue
         ├── hooks/{useAmapLoader,useRanking,useLocalDraft}.ts
-        ├── pages/{Ranking,SiteNew,SiteDetail,Scoring,MapView,Veto}.vue
+        ├── pages/{Ranking,SiteNew,SiteDetail,Scoring,MapView,Veto,Decisions}.vue
         ├── router/index.ts
         ├── utils/{score,geo,format,db,draft}.ts
         ├── styles/main.css
@@ -103,6 +106,6 @@ sologsb-1126/
 
 ## 八、数据存储说明
 
-- 全部数据只存在浏览器本地：营位、因子评估、权重方案、否决记录存 **IndexedDB**（Dexie，库名 `gbcampsite-db`）。
+- 全部数据只存在浏览器本地：营位、因子评估、权重方案、否决记录、选址决定台账存 **IndexedDB**（Dexie，库名 `gbcampsite-db`）。
 - 表单草稿（新增营位、否决登记）存 **localStorage**，键前缀 `gbcampsite:draft:`，刷新或误关页面后可恢复。
 - 容器完全无状态：不使用数据库服务、不挂载命名卷，清除浏览器站点数据即回到首次运行的样例营地。

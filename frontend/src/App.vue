@@ -1,19 +1,21 @@
 <script setup lang="ts">
 /**
  * 应用外壳：顶部导航 + 全局统计 + 页脚存储说明。
- * 挂载时并行加载四张表（sites / factors / profiles / vetos），保证各页面首屏即有数据。
+ * 挂载时并行加载五张表（sites / factors / profiles / vetos / decisions），保证各页面首屏即有数据。
  */
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSiteStore } from '@/stores/siteStore'
 import { useProfileStore } from '@/stores/profileStore'
 import { useUiStore } from '@/stores/uiStore'
+import { useDecisionStore } from '@/stores/decisionStore'
 import { resolveAmapKey } from '@/hooks/useAmapLoader'
 
 const route = useRoute()
 const siteStore = useSiteStore()
 const profileStore = useProfileStore()
 const uiStore = useUiStore()
+const decisionStore = useDecisionStore()
 
 const activeMenu = computed(() => {
   const path = route.path
@@ -22,6 +24,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/scoring')) return '/scoring'
   if (path.startsWith('/map')) return '/map'
   if (path.startsWith('/veto')) return '/veto'
+  if (path.startsWith('/decisions')) return '/decisions'
   return ''
 })
 
@@ -33,7 +36,8 @@ onMounted(async () => {
   await Promise.all([
     siteStore.load(),
     profileStore.load(),
-    uiStore.loadVetos()
+    uiStore.loadVetos(),
+    decisionStore.load()
   ])
 })
 </script>
@@ -54,11 +58,13 @@ onMounted(async () => {
         <el-menu-item index="/scoring">权重与评分</el-menu-item>
         <el-menu-item index="/map">营位地图</el-menu-item>
         <el-menu-item index="/veto">风险否决</el-menu-item>
+        <el-menu-item index="/decisions">决定台账</el-menu-item>
       </el-menu>
       <div class="app-aside">
         <el-tag type="info" effect="plain" size="small">{{ mapModeText }}</el-tag>
         <span class="app-stat">
-          营位 {{ siteStore.total }} · 方案 {{ profileStore.total }} · 否决 {{ uiStore.vetoTotal }}
+          营位 {{ siteStore.total }} · 方案 {{ profileStore.total }} · 否决 {{ uiStore.vetoTotal }} · 推荐
+          {{ decisionStore.activeCount }}
         </span>
       </div>
     </el-header>
@@ -68,7 +74,7 @@ onMounted(async () => {
       </router-view>
     </el-main>
     <el-footer class="app-footer">
-      数据全部保存在浏览器本地（IndexedDB 存营位/因子/方案/否决记录、localStorage 存表单草稿），无后端服务与外部接口。
+      数据全部保存在浏览器本地（IndexedDB 存营位/因子/方案/否决记录/决定台账、localStorage 存表单草稿），无后端服务与外部接口。
     </el-footer>
   </el-container>
 </template>
